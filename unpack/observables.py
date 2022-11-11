@@ -2,25 +2,7 @@ import numpy as np
 
 from .data import Observable, Observable3D
 
-from chroma.event import (
-    NO_HIT,
-    BULK_ABSORB,
-    SURFACE_DETECT,
-    SURFACE_ABSORB,
-    RAYLEIGH_SCATTER,
-    REFLECT_DIFFUSE,
-    REFLECT_SPECULAR,
-    SURFACE_REEMIT,
-    SURFACE_TRANSMIT,
-    BULK_REEMIT,
-    CHERENKOV,
-    SCINTILLATION,
-    NAN_ABORT,
-)
-
-__exports__ = ['NO_HIT', 'BULK_ABSORB', 'SURFACE_DETECT', 'SURFACE_ABSORB',
-               'RALEIGH_SCATTER', 'REFLECT_DIFFUSE', 'REFLECT_SPECULAR',
-               'CHERENKOV', 'SCINTILLATION', 'NAN_ABORT', 'THEIA_OBSERVABLES']
+__exports__ = ['THEIA_OBSERVABLES']
 
 THEIA_OBSERVABLES = [
 # wavelengths generated and detected

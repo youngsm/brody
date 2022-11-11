@@ -3,10 +3,24 @@ import os
 from .data import DichroiconData
 from .data import DichroiconDataReader
 from .data import DummyDichroiconData
-from .constants import *
+from .observables import THEIA_OBSERVABLES
 from ..misc_utils import get_mask, dist_to_wall
 import numpy as np
-
+from chroma.event import (
+    NO_HIT,
+    BULK_ABSORB,
+    SURFACE_DETECT,
+    SURFACE_ABSORB,
+    RAYLEIGH_SCATTER,
+    REFLECT_DIFFUSE,
+    REFLECT_SPECULAR,
+    SURFACE_REEMIT,
+    SURFACE_TRANSMIT,
+    BULK_REEMIT,
+    CHERENKOV,
+    SCINTILLATION,
+    NAN_ABORT,
+)
 
 class Unpack:
     def __init__(self, group_velocity, prompt_cut, filename=None, verbose=True):
