@@ -28,7 +28,7 @@ class PromptDirectionStaged:
                 raise TypeError("f must be a dict or a filename")
 
         def __getitem__(self, __name: str):
-            return self.__coordinators[__name]
+            return self.coordinators[__name]
 
         def __add__(self, other):
             _self = deepcopy(self)
@@ -42,9 +42,9 @@ class PromptDirectionStaged:
 
 
         def load(self, filename: str, reset: bool = True) -> dict:
-            with open(filename+".pickle", "rb") as fin:
+            with open(filename, "rb") as fin:
                 coords = pickle.load(fin)
-                assert isinstance(coords, self.__class__)
+                assert coords.__class__ is self.__class__
                 try:
                     # drain file of pickled coordinators
                     while True:
@@ -54,15 +54,13 @@ class PromptDirectionStaged:
 
             if reset:
                 for k in coords.__coordinators:
-                    coords.__coordinators[k] = coords.__coordinators[k].reset()
+                    coords.__coordinators[k] = coords.__coordinators[k].reset(coords.__coordinators[k])
 
             return coords.__coordinators
         
         def reset(self):
             for k in self.__coordinators:
-                self.__coordinators[k] = self.__coordinators[k].reset()
-                
-
+                self.__coordinators[k] = self.__coordinators[k].reset(self.__coordinators[k])
 
         @property
         def coordinators(self):
