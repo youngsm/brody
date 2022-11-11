@@ -1,5 +1,6 @@
 import database
 from copy import deepcopy
+import pickle
 
 import numpy as np
 import chroma.event
@@ -13,8 +14,18 @@ from brody.misc_utils import long_cherenkov, long_scintillation, short_cherenkov
 
 class PromptDirectionStaged:
     class Coordinators:
-        def __init__(self, args: dict):
-            self.__coordinators = args
+        def __init__(self, f: dict or str, reset=True):
+            """Package multiple coordinators into one dict-like object.
+
+                Either supply dict of coordinators or a filename of a pickled Coordinators
+                object to load from.
+                """
+            if isinstance(f, str):
+                self.__coordinators = self.load(f, reset)
+            elif isinstance(f, dict):
+                self.__coordinators = f
+            else:
+                raise TypeError("f must be a dict or a filename")
 
         def __getitem__(self, __name: str):
             return self.__coordinators[__name]
@@ -24,6 +35,34 @@ class PromptDirectionStaged:
             for k in self.__coordinators:
                 _self.__coordinators[k] += other.__coordinators[k]
             return _self
+
+        def save(self, f: str):
+            with open(f, "wb") as fout:
+                pickle.dump(self, fout)
+
+
+        def load(self, filename: str, reset: bool = True) -> dict:
+            with open(filename+".pickle", "rb") as fin:
+                coords = pickle.load(fin)
+                assert isinstance(coords, self.__class__)
+                try:
+                    # drain file of pickled coordinators
+                    while True:
+                        coords += pickle.load(fin)
+                except EOFError:
+                    pass
+
+            if reset:
+                for k in coords.__coordinators:
+                    coords.__coordinators[k] = coords.__coordinators[k].reset()
+
+            return coords.__coordinators
+        
+        def reset(self):
+            for k in self.__coordinators:
+                self.__coordinators[k] = self.__coordinators[k].reset()
+                
+
 
         @property
         def coordinators(self):
