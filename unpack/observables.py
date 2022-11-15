@@ -1,26 +1,40 @@
 import numpy as np
+from dataclasses import dataclass
 
-from .data import Observable, Observable3D
+__exports__ = ['THEIA_OBSERVABLES', 'Observable', 'Observable3D', 'ObservableLike']
 
-from chroma.event import (
-    NO_HIT,
-    BULK_ABSORB,
-    SURFACE_DETECT,
-    SURFACE_ABSORB,
-    RAYLEIGH_SCATTER,
-    REFLECT_DIFFUSE,
-    REFLECT_SPECULAR,
-    SURFACE_REEMIT,
-    SURFACE_TRANSMIT,
-    BULK_REEMIT,
-    CHERENKOV,
-    SCINTILLATION,
-    NAN_ABORT,
-)
+@dataclass
+class Observable:
+    name: str
+    dtype: str = "float32"
+    description: str = ""
+    init_shape: tuple = (0,)
+    maxshape: tuple = (None,)
 
-__exports__ = ['NO_HIT', 'BULK_ABSORB', 'SURFACE_DETECT', 'SURFACE_ABSORB',
-               'RALEIGH_SCATTER', 'REFLECT_DIFFUSE', 'REFLECT_SPECULAR',
-               'CHERENKOV', 'SCINTILLATION', 'NAN_ABORT', 'THEIA_OBSERVABLES']
+class Observable3D(Observable):
+    def __init__(self, name, dtype=None, description=""):
+        init_shape = (0, 3)
+        maxshape = (None, 3)
+        super().__init__(name, dtype, description, init_shape, maxshape)
+
+
+class ObservableLike(Observable):
+    def __init__(self, name, other, dtype=None, description=""):
+
+        if hasattr(other, "__len__"):
+            __, *off_axis = np.shape([other])
+            init_shape = (0, *off_axis)
+            maxshape = (None, *off_axis)
+        else:
+            init_shape = (0,)
+            maxshape = (None,)
+
+        if dtype is None:
+            # get the type of what sort of object we're dealing with
+            # in the data
+            dtype = np.min_scalar_type(other)
+
+        super().__init__(name, dtype, description, init_shape, maxshape)
 
 THEIA_OBSERVABLES = [
 # wavelengths generated and detected

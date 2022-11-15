@@ -1,11 +1,15 @@
 from typing import List
 import re
 import tempfile
+import os
 
 import h5py
 import numpy as np
 
+from .observables import Observable, Observable3D, ObservableLike
+
 from ..log import logger
+from . import utils
 
 """ DichroiconData is a data-saving class that is called after each event in a pyrat simulation.
 It is a (thin) wrapper around the normal h5py.File class.
@@ -27,73 +31,6 @@ After each event, flush the data to the cache file by calling DichroiconData's f
 
 At the end of the simulation, close the h5py file by calling Dset.close(). This is super simple and closes the current open file.
 """
-
-
-class Observable:
-    def __init__(
-            self,
-            name,
-            dtype="float32",
-            description="",
-            init_shape=(0,),
-            maxshape=(None,)
-            ):
-        self.__name = name
-        self.__dtype = dtype
-        self.__init_shape = init_shape
-        self.__maxshape = maxshape
-        self.__description = description
-
-    def __getitem__(self, __name: str):
-        return self.__getattribute__(__name)
-
-    @property
-    def name(self):
-        return self.__name
-
-    @property
-    def dtype(self):
-        return self.__dtype
-
-    @property
-    def init_shape(self):
-        return self.__init_shape
-
-    @property
-    def maxshape(self):
-        return self.__maxshape
-
-    @property
-    def description(self):
-        return self.__description
-
-
-class Observable3D(Observable):
-    def __init__(self, name, dtype=None, description=""):
-
-        init_shape = (0, 3)
-        maxshape = (None, 3)
-        super().__init__(name, dtype, description, init_shape, maxshape)
-
-
-class ObservableLike(Observable):
-    def __init__(self, name, other, dtype=None, description=""):
-
-        if hasattr(other, "__len__"):
-            __, *off_axis = np.shape([other])
-            init_shape = (0, *off_axis)
-            maxshape = (None, *off_axis)
-        else:
-            init_shape = (0,)
-            maxshape = (None,)
-
-        if dtype is None:
-            # get the type of what sort of object we're dealing with
-            # in the data
-            dtype = np.min_scalar_type(other)
-
-        super().__init__(name, dtype, description, init_shape, maxshape)
-
 
 class File(h5py.File):
     """Wrapper around h5py.File that adds the ability to 'add' two files together."""
@@ -230,8 +167,30 @@ class File(h5py.File):
         else:
             outf.close()
             return out
-
-
+        
+    @staticmethod
+    def describe_file(file, key=None, max_depth=np.inf):
+        obj = file[key] if key is not None else file
+        print(utils.group_to_str(obj, max_depth=max_depth), end='')
+        
+    def describe(self, key=None, max_depth=np.inf):
+        obj = self[key] if key is not None else self
+        print(utils.group_to_str(obj, max_depth=max_depth), end='')
+        
+    def __repr__(self):
+        if not self.__bool__():  # if closed
+            return f"<Closed {self.__class__.__name__} file>"
+        return utils.group_to_str(self, max_depth=1)
+    
+    if utils.H5Glance is not None:
+        def _repr_html_(self):
+            if not self.__bool__():
+                from htmlgen import Division
+                return str(Division(f"<Closed {self.__class__.__name__} file>"))
+            return utils.H5Glance(self)._repr_html_()
+    else:
+        utils._warn_import()
+    
 class DichroiconData(File):
     """DichroiconData
 
@@ -239,29 +198,6 @@ class DichroiconData(File):
     helpful to Dichroicon studies
 
     """
-
-    def __init__(self, filename, data: List[Observable], verbose=False):
-        super().__init__(filename, "w")
-        self.create_group("long")
-        self.create_group("short")
-        # self.create_group("all")
-        self.verbose = verbose
-        compression_kwargs = dict(compression="gzip")
-
-        # initialize observables as datasets in their respective groups (long and short)
-        for group in ["long", "short"]:
-            for d in data:
-                try:
-                    self[group].create_dataset(
-                        d.name,
-                        d.init_shape,
-                        d.dtype,
-                        maxshape=d.maxshape,
-                        chunks=True,
-                        **compression_kwargs)
-                    self[f"{group}/{d.name}"].attrs["description"] = d.description
-                except RuntimeError as e:
-                    raise RuntimeError("[D-D] Error while creating dataset {}/{}: {}".format(group, d.name, e)) from e
 
     def add_to(self, name, data, type):
         assert self._is_writable(), "[D-D] h5 file must be open and ready to be written to."
@@ -290,9 +226,48 @@ class DichroiconData(File):
         return self._is_open() and self.mode == "r+"
 
 
-class DichroiconDataReader(File):
+class DichroiconDataWriter(DichroiconData):
+    """DichroiconDataWriter
+
+    A wrapper around the h5py.File class that adds some functionality
+    helpful to Dichroicon studies
+
+    """
+
+    def __init__(self, filename, data: List[Observable] or None = None, verbose=False):
+        self.verbose = verbose
+        if os.path.exists(filename):
+            super().__init__(filename, "r+")
+        elif data is not None:
+            super().__init__(filename, "w")
+            self._init_groups(data)            
+        else:
+            raise ValueError("File needs to be initiated, but no list of observables were provided!")
+                    
+    def _init_groups(self, data: List[Observable]):
+        self.create_group("long")
+        self.create_group("short")
+        # self.create_group("all")
+        compression_kwargs = dict(compression="gzip")
+
+        # initialize observables as datasets in their respective groups (long and short)
+        for group in ["long", "short"]:
+            for d in data:
+                try:
+                    self[group].create_dataset(
+                        d.name,
+                        d.init_shape,
+                        d.dtype,
+                        maxshape=d.maxshape,
+                        chunks=True,
+                        **compression_kwargs)
+                    self[f"{group}/{d.name}"].attrs["description"] = d.description
+                except RuntimeError as e:
+                    raise RuntimeError("[D-D] Error while creating dataset {}/{}: {}".format(group, d.name, e)) from e
+
+class DichroiconDataReader(DichroiconData):
     def __init__(self, filename, verbose=False):
-        super().__init__(filename, "r+")
+        super().__init__(filename, "r")
         self.names = list(self["long"].keys())
         if verbose:
             logger.log(1, "[D-D] Opened h5 file: {}".format(self))
@@ -316,54 +291,20 @@ class DichroiconDataReader(File):
         else:
             return {n: self[dataset_path.format(n)][mask] for n in names}
 
-    def add_to(self, name, data, type):
-        assert self._is_writable(), "[D-D] h5 file must be open and ready to be written to."
 
-        array = np.asarray(data)
-        d = self[f"{type}/{name}"]
-
-        if len(array.shape) > 0 and array.shape[0] > 0:
-            d.resize(d.shape[0] + array.shape[0], axis=0)
-            d[-len(array):] = array
-        elif array.shape == ():
-            d.resize(d.shape[0] + 1, axis=0)
-            d[-1] = array
-        elif self.verbose:
-            # happens when there's actually no data in the data array. very small
-            # likelihood, but it happens e.g., low coverage
-            logger.warning("[D-D] WARNING: NO DATA IN ADD_TO CALL FOR %s/%s", type.upper(), name.upper())
-
-    def _is_open(self):
-        return self.__bool__()
-
-    def _is_readable(self):
-        return self._is_open() and self.mode == "r"
-
-    def _is_writable(self):
-        return self._is_open() and self.mode == "r+"
-
-class DummyDichroiconData:
+class DummyDichroiconData(dict):
     def __init__(self, select=None):
-        self.curr_data = {}
+        super().__init__()
         self.select = select
 
     def add_to(self, group, data, type):
         if self.select is not None and group not in self.select:
             return
-        self.curr_data[f"{type}/{group}"] = data
-
-    def __getitem__(self, __name: str):
-        return self.curr_data[__name]
-
-    def keys(self):
-        return self.curr_data.keys()
-
-    def items(self):
-        return self.curr_data.items()
+        self[f"{type}/{group}"] = data
 
     def reset(self):
-        del self.curr_data
-        self.curr_data = {}
+        for k in self:
+            del self[k]
 
     def flush(self):
         pass
@@ -372,4 +313,7 @@ class DummyDichroiconData:
         self.reset()
 
     def as_dict(self):
-        return self.curr_data
+        return dict(self)
+    
+    def __repr__(self):
+        return "DummyDichroiconData({}, select={})".format(self.as_dict(), self.select)

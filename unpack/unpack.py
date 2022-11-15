@@ -1,12 +1,25 @@
 import os
 
-from .data import DichroiconData
-from .data import DichroiconDataReader
+from .data import DichroiconDataWriter
 from .data import DummyDichroiconData
-from .constants import *
+from .observables import THEIA_OBSERVABLES
 from ..misc_utils import get_mask, dist_to_wall
 import numpy as np
-
+from chroma.event import (
+    NO_HIT,
+    BULK_ABSORB,
+    SURFACE_DETECT,
+    SURFACE_ABSORB,
+    RAYLEIGH_SCATTER,
+    REFLECT_DIFFUSE,
+    REFLECT_SPECULAR,
+    SURFACE_REEMIT,
+    SURFACE_TRANSMIT,
+    BULK_REEMIT,
+    CHERENKOV,
+    SCINTILLATION,
+    NAN_ABORT,
+)
 
 class Unpack:
     def __init__(self, group_velocity, prompt_cut, filename=None, verbose=True):
@@ -18,11 +31,7 @@ class Unpack:
         self.prompt_cut = prompt_cut
         self.filename = filename
         if filename:
-            if not os.path.exists(filename):
-                # create datasets
-                self.dataset = DichroiconData(filename, THEIA_OBSERVABLES, verbose)
-            else:
-                self.dataset = DichroiconDataReader(filename, verbose=True)
+            self.dataset = DichroiconDataWriter(filename, THEIA_OBSERVABLES, verbose)
         else:
             self.dataset = DummyDichroiconData(select=["cher_counts_d", "scint_counts_d", "tot_counts_d",
                                                        "tresid_ch", "tresid_sc", "tresid_tot"])
@@ -80,7 +89,7 @@ class Unpack:
         
         # calculate distance to wall of detector (nb. takes ~60 ms because it's a
         # brute-force approximation)
-        self._add("distance_to_detector_wall", dist_to_wall(true_pos, true_dir))
+        self._add("distance_to_detector_wall", dist_to_wall(true_pos, true_dir), type)
 
         # now, we'll calculate wavelengths, tresids, and costhetas with flag masks
         # ONLY takes into account detected photons.
@@ -306,3 +315,11 @@ class Unpack:
         self.dataset.close()
         # we delete the h5py object because it can't be pickled.
         del self.dataset
+
+    def __repr__(self):
+        closed = not hasattr(self, "dataset")
+        if closed:
+            return f'<Closed Unpack file>'
+        
+        class_str = self.dataset.__class__.__name__
+        return f'<Unpack file "{self.filename}" ({class_str}) (mode {self.dataset.mode})>'

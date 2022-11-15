@@ -1,0 +1,3 @@
+[submodule "unpack/utils/h5glance"]
+	path = unpack/utils/h5glance
+	url = https://github.com/youngsm/h5glance
