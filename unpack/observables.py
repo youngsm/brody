@@ -3,7 +3,6 @@ from dataclasses import dataclass
 
 __exports__ = ['THEIA_OBSERVABLES', 'Observable', 'Observable3D', 'ObservableLike']
 
-<<<<<<< HEAD:unpack/observables.py
 @dataclass
 class Observable:
     name: str
@@ -36,9 +35,6 @@ class ObservableLike(Observable):
             dtype = np.min_scalar_type(other)
 
         super().__init__(name, dtype, description, init_shape, maxshape)
-=======
-__exports__ = ['THEIA_OBSERVABLES']
->>>>>>> 85174e9f7d66b8338423af099e6c5ebc4a929071:unpack/observables.py
 
 THEIA_OBSERVABLES = [
 # wavelengths generated and detected
