@@ -1,10 +1,73 @@
+import matplotlib as mpl
 import matplotlib.colors as mcolors
+import matplotlib.pyplot as plt
 import numpy as np
 
 from ..misc_utils import get_mask
 
-__all__ = ['hex_to_rgb', 'rgb_to_dec', 'get_continuous_cmap', 'to_gif', 'get_mask']
+__all__ = ["_particle_fmt", '_si_prefixes', 'set_custom_style',
+           'dark_background', 'hex_to_rgb', 'rgb_to_dec',
+           'get_continuous_cmap', 'to_gif', 'get_mask',]
 
+_particle_fmt = {
+    "e-": r"$e^-$",
+    "e+": r"$e^+$",
+    "mu-": r"$\mu^-$",
+    "mu+": r"$\mu^+$",
+    "gamma": r"$\gamma$",
+    "pi0": r"$\pi^0$",
+}
+
+_si_prefixes = {
+    # 'y': 1e-24,  # yocto
+    # 'z': 1e-21,  # zepto
+    # 'a': 1e-18,  # atto
+    # 'f': 1e-15,  # femto
+    # 'p': 1e-12,  # pico
+    'n': 1e-9,   # nano
+    '$\mu$': 1e-6,   # micro
+    'm': 1e-3,   # mili
+    # 'c': 1e-2,   # centi
+    # 'd': 1e-1,   # deci
+    'k': 1e3,    # kilo
+    'M': 1e6,    # mega
+    'G': 1e9,    # giga
+    'T': 1e12,   # tera
+    'P': 1e15,   # peta
+    # 'E': 1e18,   # exa
+    # 'Z': 1e21,   # zetta
+    # 'Y': 1e24,   # yotta
+}
+
+_display_plot_rcParams = {
+    'figure.figsize' : [10,7],
+    'figure.dpi' : 100,
+    'xtick.top' : True,
+    'xtick.direction' : 'in',
+    'xtick.minor.visible' : True,
+    'ytick.right' : True,
+    'ytick.direction' : 'in',
+    'ytick.minor.visible' : True,
+    'font.size' : 12,
+    'mathtext.default' : 'regular',
+    'font.family' : 'DejaVu Serif',
+    }
+
+def set_custom_style(fun):
+    @mpl.rc_context(_display_plot_rcParams)
+    def wrapper(*args, **kwargs):
+        return fun(*args, **kwargs)
+    return wrapper
+
+def dark_background(fun):
+    @mpl.rc_context(_display_plot_rcParams)
+    def wrapper(*args, **kwargs):
+        orig_rcParams = plt.rcParams.copy()
+        plt.style.use('dark_background')
+        res = fun(*args, **kwargs)
+        plt.rcParams.update(orig_rcParams)
+        return res
+    return wrapper
 
 def to_polar(positions):
     pos = np.atleast_2d(positions)
