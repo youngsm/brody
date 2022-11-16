@@ -202,7 +202,6 @@ class File(h5py.File):
             return utils.H5Glance(self)._repr_html_()
     else:
         utils._warn_import()
-    
 class DichroiconData(File):
     """DichroiconData
 
@@ -236,6 +235,10 @@ class DichroiconData(File):
 
     def _is_writable(self):
         return self._is_open() and self.mode == "r+"
+    
+    def close(self):
+        logger.info("[D-D] File %s closed.", self.filename)
+        super().close()
 
 
 class DichroiconDataWriter(DichroiconData):
