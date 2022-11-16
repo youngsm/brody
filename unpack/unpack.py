@@ -1,10 +1,15 @@
 import os
+from typing import List
 
 from .data import DichroiconDataWriter
 from .data import DummyDichroiconData
 from .observables import THEIA_OBSERVABLES
 from ..misc_utils import get_mask, dist_to_wall
+from ..log import logger
+
 import numpy as np
+from numpy.typing import ArrayLike
+from chroma.detector import Detector
 from chroma.event import (
     NO_HIT,
     BULK_ABSORB,
@@ -22,20 +27,66 @@ from chroma.event import (
 )
 
 class Unpack:
-    def __init__(self, group_velocity, prompt_cut, filename=None, verbose=True):
+    """Unpacker"""
+    def __init__(self, detector: Detector or List[ArrayLike],
+                 group_velocity: List[float] = [300/1.5]*2,
+                 tts: float = 1.0,
+                 filename: str or None = None,
+                 overwrite_if_exists: bool = False,
+                 verbose: bool = True):
+        """Unpack constructor
 
-        filename = os.path.join(os.path.dirname(filename), os.path.basename(filename).replace("recon", "cache")) if filename is not None else None
-        self.prompt_cut_mask = []
+        Parameters
+        ----------
+        detector : Detector or List[ArrayLike]
+            The unpacker requires the positions and types of each channel in the Detector.
+            This variable must be either the Detector object of a list containing
+            the channel_index_to_position and channel_index_to_channel_type arrays in the
+            form [channel_index_to_position, channel_index_to_channel_type].
+        group_velocity (mm/ns): List[float], optional
+            A list of group velocities for long and short wavelength photons to be used in
+            calculating hit time residuals, by default a refractive index of 1.5 is used
+            for both wavelength ranges.
+        tts (ns): float, optional
+            Transit-time-spread of photomultiplier tubes, by default 1.0 ns
+        filename : str or None, optional
+            Filename to save unpack data to. If not specified, a HDF5-like object
+            is created in memory with groups "long" and "short" for and datasets
+            cher_counts_d", "scint_counts_d", "tot_counts_d", "tresid_ch", "tresid_sc",
+            and "tresid_tot".
+            object
+        overwrite_if_exists : bool, optional
+            If an HDF5 file of the given filename already exists, completely overwrite the
+            file. Otherwise, append to it. By default False
+        verbose : bool, optional
+            Verbose flag to input into `DichroiconDataWrtier`, by default True
+
+        Raises
+        ------
+        TypeError
+            _description_
+        """
+        if isinstance(detector, Detector):
+            self.channel_index_to_channel_type = detector.channel_index_to_channel_type
+            self.channel_index_to_position = detector.channel_index_to_position
+        elif isinstance(detector, list) and len(detector) == 2:
+            self.channel_index_to_position = detector[0]
+            self.channel_index_to_channel_type = detector[1]
+        else:
+            raise TypeError("detector must be a Detector object or a list of channel types and positions.")
+        
         self.ev_idx = 0
-        self.group_velocity = group_velocity  # did you forget mm/ns !?!?!?!?
-        self.prompt_cut = prompt_cut
+        self.gv_l, self.gv_s = group_velocity  # did you forget mm/ns !?!?!?!?
+        self.tts = tts
+
         self.filename = filename
         if filename:
-            self.dataset = DichroiconDataWriter(filename, THEIA_OBSERVABLES, verbose)
+            filename = os.path.join(os.path.dirname(filename), os.path.basename(filename).replace("recon", "cache"))
+            self.dataset = DichroiconDataWriter(filename, THEIA_OBSERVABLES, overwrite_if_exists, verbose)
         else:
             self.dataset = DummyDichroiconData(select=["cher_counts_d", "scint_counts_d", "tot_counts_d",
                                                        "tresid_ch", "tresid_sc", "tresid_tot"])
-
+        
     def digest(
         self,
         positions,
@@ -50,15 +101,39 @@ class Unpack:
         photon_tracks=None,
         dirfit_mask=None,
         type="",
-    ):
+        ):
+        '''digest a single event
+        
+        Parameters
+        ----------
+        positions
+            PMT positions
+        times
+            array of hit times
+        true_pos
+            position of the initial electron
+        true_dir
+            direction of the electron
+        true_time
+            time of initial electron
+        flat_hits
+            a list of photon objects that were detected by PMTs
+        charges
+            array of charges for each PMT hit
+        vertices
+            list of vertices
+        photons_beg
+            initial photons
+        photon_tracks
+            list of photon tracks
+        dirfit_mask
+            mask that indicates which hit_channel is a long or short PMT.
+            used to discriminate between hits detected on long and short PMTs.
+        type
+            "long" or "short"
+        '''        
 
         self.ev_idx += 1
-        """
-        Functions!
-            - get_mask: creates a boolean mask with a given array of flags and flag to check
-            - check_children: traverses the tree of children from a vertice and returns positions and kinetic energies of
-                              every gamma particle whose parent is an electron
-        """
 
         """
         General information saving for detected hits.
@@ -72,7 +147,7 @@ class Unpack:
         P = positions - true_pos
         D = np.sqrt(np.sum(np.square(P), axis=1))
         T = times - true_time
-        tresid = T - D / self.group_velocity[0 if type == "long" else 1]
+        tresid = T - D / (self.gv_l if type == "long" else self.gv_s)
 
         # deal with direction fit mask
         if dirfit_mask is None:
@@ -218,73 +293,74 @@ class Unpack:
 
         self._flush()
 
-    def digest_event(self, ev, db):
+    def digest_event(self, ev):
+        """digest_event
+        
+        Digest a single chroma Event.
+
+        *** chroma_keep_flat_hits MUST be set to true in pyrat in order to use this
+        unpacker. 
+        
+        optional pyrat simulation parameters include:
+            - chroma_keep_photons_beg: save initial photon data
+            - chroma_photon_tracking: save photon track data
+            - chroma_particle_tracking: save particle tracking data
+
+        Parameters
+        ----------
+        ev : chroma.Event
+            Chroma event to digest.
+        """
+        
+        if ev.flat_hits is None:
+            logger.warning("No hits found in event. Is chroma_keep_flat_hits set to true?")
+            return
+
         true_pos = ev.vertices[0].pos
         true_time = ev.vertices[0].t0
         true_dir = ev.vertices[0].dir
-        if db.chroma_keep_flat_hits:
-            # \/ this gets channel id's from each photon, so there'll be a ton of dupes
-            hit_channels = ev.flat_hits.channel
-            true_times = ev.flat_hits.t
-            charges = ev.channels.q[hit_channels]
-            times = np.random.normal(true_times, db.theia_pmt_tts)  # apply transit time spread uncertainty to photons
-            positions = db.det.channel_index_to_position[hit_channels]  # detected positions set to PMT positions
+        # \/ this gets channel id's from each photon, so there'll be a ton of dupes
+        hit_channels = ev.flat_hits.channel
+        true_times = ev.flat_hits.t
+        charges = ev.channels.q[hit_channels]
+        
+        times = np.random.normal(true_times, self.tts)  # apply transit time spread uncertainty to photons
+        # detected positions set to PMT positions
+        positions = self.channel_index_to_position[hit_channels]
 
-            photons_beg = ev.photons_beg if db.chroma_keep_photons_beg else None
-            vertices = ev.vertices if db.chroma_particle_tracking else None
-            photons_end = ev.photons_end if db.chroma_keep_photons_end else None
-            photon_tracks = ev.photon_tracks if db.chroma_photon_tracking else None
-            if "dichroicon" in db.theia_pmt:
-                # pass flat_hits to unpacker
-                self.digest(
-                    positions,
-                    times,
-                    true_pos,
-                    true_dir,
-                    true_time,
-                    ev.flat_hits,
-                    charges,
-                    vertices=vertices,
-                    photons_beg=photons_beg,
-                    photon_tracks=photon_tracks,
-                    dirfit_mask=db.dirfit_mask_l[hit_channels],
-                    type="long",
-                )
-                self.digest(
-                    positions,
-                    times,
-                    true_pos,
-                    true_dir,
-                    true_time,
-                    ev.flat_hits,
-                    charges,
-                    dirfit_mask=db.dirfit_mask_s[hit_channels],
-                    type="short",
-                )
-            else:
-                self.digest(
-                    positions,
-                    times,
-                    true_pos,
-                    true_dir,
-                    true_time,
-                    ev.flat_hits,
-                    charges,
-                    vertices=vertices,
-                    photons_beg=photons_beg,
-                    photon_tracks=photon_tracks,
-                    dirfit_mask=db.dirfit_mask[hit_channels],
-                    type="long",
-                )
-
-    def __call__(self, func):
-        assert not hasattr(self, "dataset"), "Dataset must be closed after being written to in order to be read."
-        assert not isinstance(self, dict), "Dataset file name must be specified."
-        def _unpack(db):
-            self.digest_event(db.ev, db)
-            return func(db)
-        return _unpack
-    
+        long_pmts = self.channel_index_to_channel_type==2
+        dirfit_mask_l = long_pmts[hit_channels]
+        dirfit_mask_s = (~long_pmts)[hit_channels]
+        
+        vertices = ev.vertices if ev.vertices[0].steps is not None else None
+        
+        # pass flat_hits to unpacker
+        self.digest(
+            positions,
+            times,
+            true_pos,
+            true_dir,
+            true_time,
+            ev.flat_hits,
+            charges,
+            vertices,
+            ev.photons_beg,
+            ev.photon_tracks,
+            dirfit_mask=dirfit_mask_l,
+            type="long",
+        )
+        self.digest(
+            positions,
+            times,
+            true_pos,
+            true_dir,
+            true_time,
+            ev.flat_hits,
+            charges,
+            dirfit_mask=dirfit_mask_s,
+            type="short",
+        )
+                
     def _add(self, group, data, type):
         assert isinstance(group, str), "[Unpack] First variable should be a string."
 

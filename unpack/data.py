@@ -1,35 +1,41 @@
-from typing import List
+import os
 import re
 import tempfile
-import os
+from typing import List
 
 import h5py
 import numpy as np
 
-from .observables import Observable, Observable3D, ObservableLike
-
 from ..log import logger
 from . import utils
+from .observables import Observable, Observable3D, ObservableLike
 
-""" DichroiconData is a data-saving class that is called after each event in a pyrat simulation.
-It is a (thin) wrapper around the normal h5py.File class.
+""" DichroiconDataWriter is a data-saving class that is called after each event in a pyrat simulation.
+It is a sub-class of DichroiconData, which is a (thin) wrapper around the normal h5py.File class.
 
 A cache hdf5 file is created at initialization, and data is incrementally written as the simulation
 continues.
 
 It should be initialized with an filename string (what to save the h5 file as) and a list of Observable's.
 Observables are the things that are being measured, and are classes that contain a few key variables that describe
-what sort of data DichroiconData will be working with.
+what sort of data DichroiconDataWriter will be working with.
 
-To add data, call DichroiconData's add_to() function, inputting parameters name, which is the name of the dataset
+To add data, call DichroiconDataWriter's add_to() function, inputting parameters name, which is the name of the dataset
 to which you're adding to, a numpy array of data to add to the existing dataset, and which PMT type the data came from
 ("long" or "short").
 
 Your data must be serializable to be saved.
 
-After each event, flush the data to the cache file by calling DichroiconData's flush() function.
+After each event, flush the data to the cache file by calling DichroiconDataWriter's flush() function.
 
-At the end of the simulation, close the h5py file by calling Dset.close(). This is super simple and closes the current open file.
+At the end of the simulation, close the h5py file by calling DichroiconDataWriter's
+close() function. This is super simple and closes the current open file.
+
+
+DichroiconDataReader is a class that reads data from a DichroiconDataWriter cache file. It
+is made to be easily navigable and to allow for easy data analysis. Like a pandas DataFrame,
+it can be `peeked` at by simply printing the object or by calling DichroiconDataReader's
+describe() function. 
 """
 
 class File(h5py.File):
@@ -44,7 +50,9 @@ class File(h5py.File):
                 link: bool = True,
                 temp: bool = False,
                 return_file: bool = False):
-        """Combine N datasets of the same architecture into a single dataset
+        """Combine N datasets of the same architecture into a single dataset.
+        
+        Helpful if you ran the same simulation on multiple GPUs and want to combine the results.
 
         Note that this function does NOT check for the same architecture,
         so be careful.
@@ -60,6 +68,10 @@ class File(h5py.File):
         link : bool, optional
             whether to create a virtual dataset (i.e., a pointer to the datasets found in
             fnames) or an actual copy of the data, by default True
+        temp: bool, optional
+            whether to save the combined file to a temporary file instead of an actual
+            file, by default False. useful if you are using you just want to combine files
+            in a Jupyter notebook and don't want to save the file.
         out : str, optional
             output filename, by default None
 
@@ -231,19 +243,30 @@ class DichroiconDataWriter(DichroiconData):
 
     A wrapper around the h5py.File class that adds some functionality
     helpful to Dichroicon studies
-
     """
 
-    def __init__(self, filename, data: List[Observable] or None = None, verbose=False):
+    def __init__(self, filename, data: List[Observable] or None = None,
+                 overwrite_if_exists: bool = False,
+                 verbose=False):
         self.verbose = verbose
+        
         if os.path.exists(filename):
-            super().__init__(filename, "r+")
+            if overwrite_if_exists and data is not None:
+                super().__init__(filename, "w")
+                self._init_groups(data)
+                logger.info("[D-D] File %s already exists. Overwriting.", filename)
+            elif not overwrite_if_exists:
+                super().__init__(filename, "r+")
+                logger.info("[D-D] File %s already exists. Appending data.", filename)
+            else:
+                raise ValueError("[D-D] File cannot be overwritten without providing data on observables.")
         elif data is not None:
             super().__init__(filename, "w")
-            self._init_groups(data)            
+            self._init_groups(data)
+            logger.info("[D-D] File %s initialized.", filename)
         else:
-            raise ValueError("File needs to be initiated, but no list of observables were provided!")
-                    
+            raise ValueError("[D-D] File cannot be created without providing data on observables.")
+       
     def _init_groups(self, data: List[Observable]):
         self.create_group("long")
         self.create_group("short")
@@ -270,12 +293,11 @@ class DichroiconDataReader(DichroiconData):
         super().__init__(filename, "r")
         self.names = list(self["long"].keys())
         if verbose:
-            logger.log(1, "[D-D] Opened h5 file: {}".format(self))
+            logger.info("[D-D] Opened h5 file: {}".format(self))
         # names must be a list of strings
 
     def grab(self, type, mask=None, names=None):
-        assert self.__bool__(
-        ), "[DSET] h5 file must be open and ready to be read from."
+        assert bool(self), "[D-D] h5 file must be open and ready to be read from."
 
         if names is None:
             names = self.names
