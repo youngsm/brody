@@ -89,14 +89,15 @@ def hist(
     if legend is not None:
         labels = legend if np.iterable(legend) else None
         legend = True
-
-    argsort = np.argsort([np.mean(d) for d in datas])[::-1]
+    means  = np.array([np.nanmean(d) for d in datas])
+    vars = np.array([np.sqrt(np.nanvar(d)) for d in datas])
+    argsort = np.argsort(means)[::-1]
     datas = [datas[i] for i in argsort]
     colors = [colors[i] for i in argsort]
     if legend and labels is not None:
         labels = [labels[i] for i in argsort]
 
-    for i, (d, c, n) in enumerate(zip(datas, colors, norms)):
+    for i, (d, c, n, mean, var) in enumerate(zip(datas, colors, norms, means, vars)):
 
         if legend:
             if labels is not None:
@@ -106,8 +107,6 @@ def hist(
         else:
             label = ""
 
-        mean = np.mean(d[:])
-        var = np.sqrt(np.var(d[:]))
         if bins is None:
             bins = np.linspace(mean-4*var, mean+4*var, 200)
         elif not bins_set:
@@ -124,8 +123,11 @@ def hist(
             drawstyle='steps-mid', linewidth=plt.rcParams["axes.linewidth"],
             label=label, color=c)
 
+        
         if error:
-            plt.errorbar(centers, counts/n, yerr=np.sqrt(counts)/n,
+            # If density, re-adjust normalization factor.
+            yerr = np.sqrt(counts)/n if not density else np.sqrt(counts)/n/np.sqrt(d.size / np.sum(counts))
+            plt.errorbar(centers, counts/n, yerr=yerr,
                          **plot_kwargs, capsize=capsize, **kwargs)
         else:
             plt.plot(centers, counts/n, **plot_kwargs, **kwargs)
