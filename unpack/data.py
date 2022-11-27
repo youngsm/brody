@@ -328,7 +328,7 @@ class DummyDichroiconData(dict):
         self[f"{type}/{group}"] = data
 
     def reset(self):
-        for k in self:
+        for k in list(self.keys()):
             del self[k]
 
     def flush(self):
