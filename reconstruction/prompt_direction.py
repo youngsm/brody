@@ -13,58 +13,66 @@ from brody.misc_utils import long_cherenkov, long_scintillation, short_cherenkov
 
 
 class PromptDirectionStaged:
-    class Coordinators:
+    class Coordinators(dict):
         def __init__(self, f: dict or str, reset=True):
             """Package multiple coordinators into one dict-like object.
 
                 Either supply dict of coordinators or a filename of a pickled Coordinators
                 object to load from.
                 """
+            super().__init__()
+                
             if isinstance(f, str):
-                self.__coordinators = self.load(f, reset)
+                coords = self.drain_pickle(f)
             elif isinstance(f, dict):
-                self.__coordinators = f
+                coords = f
             else:
                 raise TypeError("f must be a dict or a filename")
-
-        def __getitem__(self, __name: str):
-            return self.coordinators[__name]
-
+            
+            for k,v in coords.items():
+                if reset:
+                    coords[k] = v.reset(v)
+                self[k] = v
+            
         def __add__(self, other):
             _self = deepcopy(self)
-            for k in self.__coordinators:
-                _self.__coordinators[k] += other.__coordinators[k]
+            for k in self:
+                _self[k] += other[k]
             return _self
 
         def save(self, f: str):
             with open(f, "wb") as fout:
                 pickle.dump(self, fout)
 
+        @classmethod
+        def load(cls, filename: str, reset: bool = True) -> 'Coordinators':
+            coords = cls.drain_pickle(filename)
+            if reset:
+                for k in coords:
+                    coords[k] = coords[k].reset(coords[k])
 
-        def load(self, filename: str, reset: bool = True) -> dict:
+            return coords
+        
+        @staticmethod
+        def drain_pickle(filename: str):
             with open(filename, "rb") as fin:
                 coords = pickle.load(fin)
-                assert coords.__class__ is self.__class__
                 try:
-                    # drain file of pickled coordinators
                     while True:
                         coords += pickle.load(fin)
                 except EOFError:
                     pass
-
-            if reset:
-                for k in coords.__coordinators:
-                    coords.__coordinators[k] = coords.__coordinators[k].reset(coords.__coordinators[k])
-
-            return coords.__coordinators
+                return coords
         
         def reset(self):
-            for k in self.__coordinators:
-                self.__coordinators[k] = self.__coordinators[k].reset(self.__coordinators[k])
+            for k in self:
+                self[k] = self[k].reset(self[k])
 
-        @property
-        def coordinators(self):
-            return self.__coordinators
+        def as_dict(self):
+            return dict(self)
+        
+        def __repr__(self):
+            return str(self.as_dict())
 
     class Coordinator:
         def __init__(
@@ -231,9 +239,8 @@ class PromptDirectionStaged:
         # i.e., for Dichroicon studies, a long and short PMT Coordinators should be
         # created.
         self.nlls = {}
-        for k,coord in coords.coordinators.items():
-            self.nlls[k] = { _k: _v for _k, _v in zip(["tresid", "cosalpha", "costresid"], coord.create_nlls()) }
-        # self.cosalpha_nll = nlls[0]
+        for k,coord in coords.items():
+            self.nlls[k] = { _k: _v for _k, _v in zip(["tresid", "cosalpha", "dirtime"], coord.create_nlls()) }
 
     def fit(
         self,
@@ -255,8 +262,10 @@ class PromptDirectionStaged:
         # we first call fit_postime with PMT positions and timings
         # using all PMTs (or just scint. up to u)
         Nscint_tot = len(positions) / short_scintillation
-
-        group_velocities = np.where(long_mask, self.group_velocity_l, self.group_velocity_s) if long_mask.any() else self.group_velocity_s
+        if long_mask.any():
+            group_velocities = np.where(long_mask, self.group_velocity_l, self.group_velocity_s)
+        else:
+            group_velocities = self.group_velocity_s
         tresid_nll = self.nlls['short']['tresid']
         m_xyzt = fit_position_time(
             positions,
