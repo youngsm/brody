@@ -1,10 +1,13 @@
 import os
+import re
 from subprocess import PIPE, Popen
 
 from ..log import logger
 from .options import PyratOptions
 from .utils import _keyval_to_line, _option_to_line
 
+numeric_const_pattern = '[-+]? (?: (?: \d* \. \d+ ) | (?: \d+ \.? ) )(?: [Ee] [+-]? \d+ ) ?'
+rx = re.compile(numeric_const_pattern, re.VERBOSE)
 
 class PyratConfiguration:
     def __init__(self, macro: str, pyrat_path: str = "pyrat", cuda_device_id: int = None):
@@ -22,7 +25,7 @@ class PyratConfiguration:
             What CUDA device to use. By default, use any device.
         """
         self.pyrat = pyrat_path
-        self.macro = macro
+        self.macro = os.path.abspath(macro)
         self.options = PyratOptions()
 
         self.cuda_device_id = cuda_device_id
@@ -62,10 +65,25 @@ class PyratConfiguration:
             env_dict.update({"CUDA_VISIBLE_DEVICES": str(self.cuda_device_id)})
 
         with Popen(cmd, stdout=PIPE, stderr=PIPE, bufsize=1, universal_newlines=True, env=env_dict) as p:
-            for line in p.stdout:
-                print(line, end='')  # process line here
-            for line in p.stderr:
-                print(line, end='')  # process line here
+            try:
+                for line in p.stdout:
+                    print(line, end='')  # process line here
+                for line in p.stderr:
+                    print(line, end='')  # process line here
+            except KeyboardInterrupt as e:
+                print("Killing pyrat")
+                pid_str = os.popen('nvidia-smi -i %i -q --display=PIDS' % self.cuda_device_id).read()
+                ploc = [m.start() for m in re.finditer('python',pid_str)]
+                ploc = int(ploc[0])
+                pid = rx.findall(pid_str[ploc-133:ploc])
+                pid = int(pid[0])
+                os.popen('kill %i' % pid)
+
+                p.kill()
+                p.wait()
+
+                raise e from None
+
 
     def __str__(self) -> str:
         return self.cmd()
