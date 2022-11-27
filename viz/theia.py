@@ -24,6 +24,7 @@ def event_display(detector: Detector or List[ArrayLike],
                   pmt_type: int = 1,
                   cmap="cool",
                   prompt_cut=False,
+                  scale_markersize=False,
                   log=False):
     '''This function plots the event display of a given event.
     
@@ -138,12 +139,18 @@ def event_display(detector: Detector or List[ArrayLike],
             ct = c[top_mask]
             cm = c[middle_mask]
             cb = c[bottom_mask]
+            
+            maxs = np.max(s)
+            st = 10*(s[top_mask]/maxs)**0.5
+            sm = 10*(s[middle_mask]/maxs)**0.5
+            sb = 10*(s[bottom_mask]/maxs)**0.5
         except TypeError:
             ct = cm = cb = c
+            st = sm = sb = s
 
-        circ1.scatter(*tp, s=s, c=ct, **kwargs)
-        circ2.scatter(*bp, s=s, c=cb, **kwargs)
-        center.scatter(m_theta, m_z, s=s, c=cm, **kwargs)
+        circ1.scatter(*tp, s=st, c=ct, **kwargs)
+        center.scatter(m_theta, m_z, s=sm, c=cm, **kwargs)
+        circ2.scatter(*bp, s=sb, c=cb, **kwargs)
 
     pmt_type_mask = pmt_types == pmt_type
     chits = [cher_hits_s, cher_hits_l]
@@ -199,10 +206,14 @@ def event_display(detector: Detector or List[ArrayLike],
         normdict = dict(norm=LogNorm())
     else:
         normdict = dict()
+        
+        
+    s = charges[pmt_type-1][time_mask] if scale_markersize else 2
     plot_hits(hit_positions[hit_types == pmt_type][time_mask], ztop, zbottom, c=charges[pmt_type-1][time_mask], cmap=cmap,
-              alpha=1, s=2, zorder=0, marker='o', label=f"{pmt_txt[pmt_type-1]} Wavelengths ({tresid_cut_fmt[pmt_type-1]})",
-              **normdict)
+              alpha=1, s=s, zorder=10, marker='o', label=f"{pmt_txt[pmt_type-1]} Wavelengths ({tresid_cut_fmt[pmt_type-1]})",
+              **normdict)  # s=2
     plt.legend(frameon=False, bbox_to_anchor=(0.85, 3.23), loc='upper left', ncol=1, fontsize=12)
+    
     plt.colorbar(center.get_children()[
                  1], ax=center, label="Photo-electrons (p.e.)", fraction=0.046, pad=0.0)
 
@@ -246,11 +257,12 @@ def event_display(detector: Detector or List[ArrayLike],
     
     # plot hits if we're looking at long PMT hits
     if pmt_type == 2:
-        _cmap = center.get_children()[1].get_cmap()
+        s = 2*(charges[pmt_type-1][time_mask]/max(charges[pmt_type-1][time_mask]))**0.5 if scale_markersize else 0.5
         ax3d.scatter(*hit_positions[hit_types == pmt_type][time_mask].T,
                     c=charges[pmt_type-1][time_mask],
-                    cmap=_cmap,
-                    alpha=0.5, s=0.5)
+                    s=s,
+                    cmap=cmap,
+                    alpha=0.5)
     
     # axis housekeeping
     ax3d.set_xlabel('x'), ax3d.set_ylabel('y'), ax3d.set_zlabel('z')
