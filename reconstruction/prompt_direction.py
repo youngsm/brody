@@ -41,7 +41,7 @@ class PromptDirectionStaged:
             return _self
 
         def save(self, f: str):
-            with open(f, "wb") as fout:
+            with open(f, "ab") as fout:
                 pickle.dump(self, fout)
 
         @classmethod
@@ -200,8 +200,8 @@ class PromptDirectionStaged:
             if return_info:
                 from ..unpack import Unpack
 
-                unpacker = Unpack(db.group_velocity, db.prompt_cut)
-                unpacker.digest_event(ev, db)
+                unpacker = Unpack(db.det, db.group_velocity)
+                unpacker.digest_event(ev)
                 data = deepcopy(unpacker.dataset.as_dict())
                 unpacker.close()
                 return data
