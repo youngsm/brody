@@ -1,5 +1,6 @@
 import numpy as np
 from dataclasses import dataclass
+from brody.misc_utils import refractive_index_long, refractive_index_short
 
 __exports__ = ['THEIA_OBSERVABLES', 'Observable', 'Observable3D', 'ObservableLike']
 
@@ -41,7 +42,7 @@ THEIA_OBSERVABLES = [
 Observable("wv_ch_g",               np.float32, "generated cherenkov wavelengths"),
 Observable("wv_ch_d",               np.float32, "detected cherenkov (no reemission) wavelengths"),
 Observable("wv_ch_no_reemit_d",     np.float32, "detected cherenkov wavelengths"),
-Observable("wv_sc_g",               np.float32, "total detected counts"),
+Observable("wv_sc_g",               np.float32, "generated sintillation wavelengths"),
 Observable("wv_sc_d",               np.float32, "detected scintillation wavelengths"),
 Observable("wv_sc_no_reemit_d",     np.float32, "detected scintillation (no reemission) wavelengths"),
 Observable("wv_re_g",               np.float32, "generated reemission wavelengths"),
@@ -92,6 +93,6 @@ Observable3D("beg_re_pos",          np.float32, "init positions of remission pho
 Observable3D("wv475nm_sc_dir",      np.float32, "direction of scintillation photons at or before 475nm"),
 Observable3D("wv475nm_sc_pos",      np.float32, "position of scintillation photons at or before 475nm"),
 Observable3D("e_pos",               np.float32, "initial electron position"),
-Observable3D("e_dir",               np.float32, "initial electron position"),
+Observable3D("e_dir",               np.float32, "initial electron direction"),
 Observable("e_t0",                  np.float32, "initial electron time"),
 ]
